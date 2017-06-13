@@ -27,9 +27,12 @@ computeNF expect only one argument: the k-mers counts table (possibly gzipped). 
 
 ## Input example:
 
-    kmer  sample1 sample2 sample3
-    AAG 12  23  45
-    CGA 0 3 5
+    tag     sample1 sample2 sample3 sample4
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA 627     357     345     446
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC 2       6       9       10
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG 16      15      25      28
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAT 11      10      11      10
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAGA 10      9       20      14
     ...
 
 ## Output example
