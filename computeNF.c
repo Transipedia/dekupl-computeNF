@@ -132,6 +132,12 @@ int main(int argc, char *argv[])
 
   int *counts = (int*) malloc(sizeof(int) * nb_samples);
   double *medians = (double*) calloc(nb_samples, sizeof(double));
+  double *cumadevs = (double*) calloc(nb_samples, sizeof(double));
+
+  for(j = 0; j < nb_samples; j++) {
+    medians[j] = 0.0;
+    cumadevs[j] = 0.0;
+  }
 
   // skip header line
   ks_getuntil(ks, KS_SEP_LINE, str, &dret);
@@ -146,20 +152,34 @@ int main(int argc, char *argv[])
       j++;
     }
 
-    // Compute raw mean
-    double log_row_mean = logmean(counts, nb_samples);
-    double value = 0;
-    for(j = 0; j < nb_samples; j++) {
-      if(counts[j] > 0 && isfinite(log_row_mean)) {
-        value = log(counts[j]) - log_row_mean;
-        // method from https://stackoverflow.com/questions/1058813/on-line-iterator-algorithms-for-estimating-statistical-median-mode-skewnes
-        medians[j] += 0.001 * sgn(value - medians[j]);
-      }
-    }
-
     // Initial code from compute_norm_factors.R
     //loggeomeans <- rowMeans(log(selected_kmers_counts[,2:ncol(selected_kmers_counts)]))
     //function(cnts) { exp(median((log(cnts) - loggeomeans)[is.finite(loggeomeans) & cnts > 0]))})
+
+    // Compute raw mean
+    double log_row_mean = logmean(counts, nb_samples);
+    double value = 0;
+
+    for(j = 0; j < nb_samples; j++) {
+      if(counts[j] > 0 && isfinite(log_row_mean)) {
+
+        nb_kmers[j]++;
+
+        value = log(counts[j]) - log_row_mean;
+
+        // method from https://stackoverflow.com/questions/1058813/on-line-iterator-algorithms-for-estimating-statistical-median-mode-skewnes
+        // A seemingly-better approach is to set eta from a running estimate of the
+        // absolute deviation: for each new value sample, update cumadev +=
+        // abs(sample-median). Then set eta = 1.5*cumadev/(k*k), where k is the
+        // number of samples seen so far.
+        cumadevs[j] += abs(value - medians[j]);
+
+
+        double eta = 1.5 * cumadevs[j] / ((line+1)*(line+1));
+
+        medians[j] += eta * sgn(value - medians[j]);
+      }
+    }
 
     if (dret != '\n') {
       fprintf(stderr, "inconsistent number of column (line %zu)\n", line);
