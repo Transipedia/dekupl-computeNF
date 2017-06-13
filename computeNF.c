@@ -163,8 +163,6 @@ int main(int argc, char *argv[])
     for(j = 0; j < nb_samples; j++) {
       if(counts[j] > 0 && isfinite(log_row_mean)) {
 
-        nb_kmers[j]++;
-
         value = log(counts[j]) - log_row_mean;
 
         // method from https://stackoverflow.com/questions/1058813/on-line-iterator-algorithms-for-estimating-statistical-median-mode-skewnes
