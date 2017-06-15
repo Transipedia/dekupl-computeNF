@@ -21,9 +21,13 @@ In this implementation we compute the median using an incremental median estimat
 
 Usage:
 
-    computeNF counts.tsv[.gz]
+    computeNF [-s SAMPLING_RATE] counts.tsv[.gz]
 
 computeNF expect only one argument: the k-mers counts table (possibly gzipped). This table is a TSV (Tabulated-Separated Value) file, with an header line containing the sample names, and onr k-mer by row with its associated counts for each sample.
+
+## Options
+
+- `-s SAMPLING_RATE` option define a sampling rate at which k-mers are considered to compute NF. This will accelerate the processing time.
 
 ## Input example:
 

@@ -75,19 +75,24 @@ double dmin(double a, double b) {
 int main(int argc, char *argv[])
 {
   char *counts_file;
+  double sampling_rate = 1;
 
   int c;
-  while ((c = getopt(argc, argv, "p:f:")) >= 0) {
+  while ((c = getopt(argc, argv, "s:")) >= 0) {
     switch (c) {
-      //case 'p': pvalue_threshold = atof(optarg); break;
-      //case 'f': log2fc_threshold = atof(optarg); break;
+      case 's': sampling_rate = atof(optarg); break;
     }
+  }
+
+  if(sampling_rate <= 0 || sampling_rate > 1) {
+    fprintf(stderr, "Invalid value for sampling rate [%.2f], must be comprised between 0 and 1.\n", sampling_rate);
+    return 1;
   }
 
   if ((optind) >= argc) {
 		fprintf(stderr, "\n");
 		fprintf(stderr, "Usage:   computeNF [options] <counts.tsv>\n\n");
-		//fprintf(stderr, "Options: -p FLOAT  max pvalue [%.2f]\n", pvalue_threshold);
+		fprintf(stderr, "Options: -s FLOAT  sampling rate [%.2f]\n", sampling_rate);
     //fprintf(stderr, "         -f FLOAT  min log2 fold change (absolute) [%.2f]\n", log2fc_threshold);
 		fprintf(stderr, "\n");
 		return 1;
@@ -99,7 +104,7 @@ int main(int argc, char *argv[])
 	kstream_t *ks;
 	kstring_t *str;
   kvec_t(char*) samples;
-  int dret = 0;
+  int dret = 0, sampling_modulo = (int) 1 / sampling_rate;
   size_t j, line = 0, nb_samples = 0;
 
   str = (kstring_t*)calloc(1, sizeof(kstring_t));
@@ -142,6 +147,16 @@ int main(int argc, char *argv[])
   // skip header line
   ks_getuntil(ks, KS_SEP_LINE, str, &dret);
   while(ks_getuntil(ks, KS_SEP_SPACE, str, &dret) >= 0) {
+    line++;
+
+    // Go to next line
+    if(line % sampling_modulo != 0) {
+      // Skip the rest of the line
+      ks_getuntil(ks, KS_SEP_LINE, str, &dret);
+      // Go to next loop iteration
+      continue;
+    }
+
     char *kmer = ks_release(str);
 
     // load counts
@@ -173,7 +188,7 @@ int main(int argc, char *argv[])
         cumadevs[j] += abs(value - medians[j]);
 
 
-        double eta = 1.5 * cumadevs[j] / ((line+1)*(line+1));
+        double eta = 1.5 * cumadevs[j] / (line * line);
 
         medians[j] += eta * sgn(value - medians[j]);
       }
@@ -186,7 +201,6 @@ int main(int argc, char *argv[])
 
     // Free k-mer
     free(kmer);
-    line++;
   }
   ks_destroy(ks);
   gzclose(fp);
