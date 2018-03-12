@@ -2,8 +2,6 @@
 
 computeNF is a small utilitary that compute Normalization Factors (NF) from k-mer counts table. NF is the median of the ratios between sample counts and counts of a pseudo-reference obtained by taking the geometric mean of each k-mer across all samples.
 
-In this implementation we compute the median using an incremental median estimator as proposed [here]( https://stackoverflow.com/a/2144754/3730728).
-
 # Installation
 
 ## Dependancies
@@ -45,5 +43,3 @@ computeNF expect only one argument: the k-mers counts table (possibly gzipped). 
     sample1 0.9831
     sample2 1.2342
     sample3 1.0023
-
-
