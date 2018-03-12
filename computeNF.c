@@ -1,9 +1,7 @@
 #include <stdio.h>  //fprintf
 #include <stdlib.h> //free qsort
+#include <math.h> // log()
 #include <zlib.h>
-#include <inttypes.h>
-#include <math.h> // pow()
-#include <stdint.h>
 
 // klib (H.li)
 #include "kseq.h"
@@ -16,26 +14,6 @@ KSEQ_INIT(gzFile, gzread)
 
 typedef kvec_t(double) double_array;
 
-double log2(double n) {
-  // log(n)/log(2) is log2.
-  return log(n) / log(2);
-}
-
-double sgn(double x) {
-  if (x > 0) return 1;
-  if (x < 0) return -1;
-  return 0;
-}
-
-double mean(double *counts, int n) {
-  double sum = 0;
-  int i = 0;
-  for (; i < n; i++) {
-    sum += counts[i];
-  }
-  return sum / n;
-}
-
 double logmean(int *counts, int n) {
   double sum = 0;
   int i = 0;
@@ -45,40 +23,15 @@ double logmean(int *counts, int n) {
   return sum / n;
 }
 
-double sd(double *counts, int n, double mean) {
-  double sum = 0;
-  int i = 0;
-  for (; i < n; i++) {
-    sum += pow(counts[i] - mean, 2);
-  }
-  return sqrt(sum / (n-1));
-}
-
-int cmp_reverse_double_pointers(const void * a, const void * b) {
-  const double aa = **(const double **)a;
-  const double bb = **(const double **)b;
-  if (aa > bb) {
-    return -1;
-  }
-  if (bb > aa) {
-    return  1;
-  }
-  return 0;
-}
-
 int compare_double(const void *a,const void *b) {
   double *x = (double *) a;
   double *y = (double *) b;
-  if (*x < *y) return -1;
-  else if (*x > *y) return 1; return 0;
-}
-
-double dmin(double a, double b) {
-  if (a > b) {
-    return b;
-  } else {
-    return a;
+  if (*x < *y) {
+    return -1;
+  } else if (*x > *y) {
+    return 1;
   }
+  return 0;
 }
 
 int main(int argc, char *argv[])
@@ -120,7 +73,7 @@ int main(int argc, char *argv[])
   kv_init(samples);
   kv_init(norm_counts);
 
-  // 1. Get samples names from counts_file
+  /* 1. Get samples names from counts_file */
 
   fp = gzopen(counts_file, "r");
   if(!fp) { fprintf(stderr, "Failed to open %s\n", counts_file); exit(EXIT_FAILURE); }
@@ -140,7 +93,7 @@ int main(int argc, char *argv[])
 
   nb_samples = kv_size(samples);
 
-  // 1. Get samples conditions indicies and Normalization factors
+  /* 2. For each sample store counts normalized with log row mean */
 
   // Open counts file
   fp = gzopen(counts_file, "r");
@@ -158,7 +111,6 @@ int main(int argc, char *argv[])
     if(line % sampling_modulo != 0) {
       // Skip the rest of the line
       ks_getuntil(ks, KS_SEP_LINE, str, &dret);
-      // Go to next loop iteration
       continue;
     }
 
@@ -167,14 +119,9 @@ int main(int argc, char *argv[])
     // load counts
     j = 0;
     while(j < nb_samples && ks_getuntil(ks, KS_SEP_SPACE, str, &dret) >= 0) {
-      //fprintf(stderr, "TOTO\n");
       counts[j] = atoi(str->s);
       j++;
     }
-
-    // Initial code from compute_norm_factors.R
-    //loggeomeans <- rowMeans(log(selected_kmers_counts[,2:ncol(selected_kmers_counts)]))
-    //function(cnts) { exp(median((log(cnts) - loggeomeans)[is.finite(loggeomeans) & cnts > 0]))})
 
     // Compute raw mean
     double log_row_mean = logmean(counts, nb_samples);
@@ -192,7 +139,6 @@ int main(int argc, char *argv[])
       exit(EXIT_FAILURE);
     }
 
-    // Free k-mer
     free(kmer);
   }
   ks_destroy(ks);
@@ -200,6 +146,7 @@ int main(int argc, char *argv[])
 
   fprintf(stdout, "sample\tnormalization_factor\n");
 
+  /* 3. Compute median for each sample and print normalization factor */
   for(j = 0; j < nb_samples; j++) {
     double_array a = kv_A(norm_counts,j);
     qsort(a.a, kv_size(a), sizeof(double), compare_double);
