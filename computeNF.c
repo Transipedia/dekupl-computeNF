@@ -51,7 +51,7 @@ int main(int argc, char *argv[])
   char *counts_file;
   // double sampling_rate = 1;
   int nb_kmers_per_step = 1000000;
-  double min_error = 0.01;
+  double min_error_per_sample = 0.001;
 
   // int c;
   // while ((c = getopt(argc, argv, "s:")) >= 0) {
@@ -83,6 +83,7 @@ int main(int argc, char *argv[])
   int dret = 0;
   size_t j, line = 0, nb_samples = 0, nb_step = 0;
   double* normalization_factors;
+  double min_error;
 
   str = (kstring_t*)calloc(1, sizeof(kstring_t));
   kv_init(samples);
@@ -108,7 +109,7 @@ int main(int argc, char *argv[])
 
   nb_samples = kv_size(samples);
   normalization_factors = (double*) malloc(sizeof(double) * nb_samples);
-
+  min_error = min_error_per_sample * nb_samples;
   /* 2. For each sample store counts normalized with log row mean */
 
   // Open counts file
