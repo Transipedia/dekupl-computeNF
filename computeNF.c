@@ -1,5 +1,5 @@
 #include <stdio.h>  //fprintf
-#include <stdlib.h> //free
+#include <stdlib.h> //free qsort
 #include <zlib.h>
 #include <inttypes.h>
 #include <math.h> // pow()
@@ -13,6 +13,8 @@
 KSEQ_INIT(gzFile, gzread)
 
 #define VERSION "0.0.1"
+
+typedef kvec_t(double) double_array;
 
 double log2(double n) {
   // log(n)/log(2) is log2.
@@ -64,6 +66,13 @@ int cmp_reverse_double_pointers(const void * a, const void * b) {
   return 0;
 }
 
+int compare_double(const void *a,const void *b) {
+  double *x = (double *) a;
+  double *y = (double *) b;
+  if (*x < *y) return -1;
+  else if (*x > *y) return 1; return 0;
+}
+
 double dmin(double a, double b) {
   if (a > b) {
     return b;
@@ -93,7 +102,6 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "\n");
 		fprintf(stderr, "Usage:   computeNF [options] <counts.tsv>\n\n");
 		fprintf(stderr, "Options: -s FLOAT  sampling rate [%.2f]\n", sampling_rate);
-    //fprintf(stderr, "         -f FLOAT  min log2 fold change (absolute) [%.2f]\n", log2fc_threshold);
 		fprintf(stderr, "\n");
 		return 1;
 	}
@@ -104,11 +112,13 @@ int main(int argc, char *argv[])
 	kstream_t *ks;
 	kstring_t *str;
   kvec_t(char*) samples;
+  kvec_t(double_array) norm_counts;
   int dret = 0, sampling_modulo = (int) 1 / sampling_rate;
   size_t j, line = 0, nb_samples = 0;
 
   str = (kstring_t*)calloc(1, sizeof(kstring_t));
   kv_init(samples);
+  kv_init(norm_counts);
 
   // 1. Get samples names from counts_file
 
@@ -119,6 +129,10 @@ int main(int argc, char *argv[])
   ks_getuntil(ks, KS_SEP_SPACE, str, &dret);
   while(ks_getuntil(ks, KS_SEP_SPACE, str, &dret) >= 0) {
     kv_push(char*, samples, ks_release(str));
+    // Create a new array for the counts of this samples
+    double_array sample_counts;
+    kv_init(sample_counts);
+    kv_push(double_array, norm_counts, sample_counts);
     if (dret == '\n') break;
   }
   ks_destroy(ks);
@@ -128,28 +142,19 @@ int main(int argc, char *argv[])
 
   // 1. Get samples conditions indicies and Normalization factors
 
-  //double *normalization_factors = (double*)calloc(kv_size(samples), sizeof(double));
-
   // Open counts file
   fp = gzopen(counts_file, "r");
   if(!fp) { fprintf(stderr, "Failed to open %s\n", counts_file); exit(EXIT_FAILURE); }
   ks = ks_init(fp);
 
   int *counts = (int*) malloc(sizeof(int) * nb_samples);
-  double *medians = (double*) calloc(nb_samples, sizeof(double));
-  double *cumadevs = (double*) calloc(nb_samples, sizeof(double));
-
-  for(j = 0; j < nb_samples; j++) {
-    medians[j] = 0.0;
-    cumadevs[j] = 0.0;
-  }
 
   // skip header line
   ks_getuntil(ks, KS_SEP_LINE, str, &dret);
   while(ks_getuntil(ks, KS_SEP_SPACE, str, &dret) >= 0) {
     line++;
 
-    // Go to next line
+    // Go to next line depending of the sampling rate
     if(line % sampling_modulo != 0) {
       // Skip the rest of the line
       ks_getuntil(ks, KS_SEP_LINE, str, &dret);
@@ -177,20 +182,8 @@ int main(int argc, char *argv[])
 
     for(j = 0; j < nb_samples; j++) {
       if(counts[j] > 0 && isfinite(log_row_mean)) {
-
         value = log(counts[j]) - log_row_mean;
-
-        // method from https://stackoverflow.com/questions/1058813/on-line-iterator-algorithms-for-estimating-statistical-median-mode-skewnes
-        // A seemingly-better approach is to set eta from a running estimate of the
-        // absolute deviation: for each new value sample, update cumadev +=
-        // abs(sample-median). Then set eta = 1.5*cumadev/(k*k), where k is the
-        // number of samples seen so far.
-        cumadevs[j] += abs(value - medians[j]);
-
-
-        double eta = 1.5 * cumadevs[j] / (line * line);
-
-        medians[j] += eta * sgn(value - medians[j]);
+        kv_push(double,kv_A(norm_counts,j),value);
       }
     }
 
@@ -208,8 +201,12 @@ int main(int argc, char *argv[])
   fprintf(stdout, "sample\tnormalization_factor\n");
 
   for(j = 0; j < nb_samples; j++) {
-      double nf = exp(medians[j]);
-      fprintf(stdout, "%s\t%f\n", kv_A(samples,j), nf);
+    double_array a = kv_A(norm_counts,j);
+    qsort(a.a, kv_size(a), sizeof(double), compare_double);
+    double median = kv_A(a,int(kv_size(a)/2));
+    double nf = exp(median);
+    fprintf(stdout, "%s\t%f\n", kv_A(samples,j), nf);
+    kv_destroy(a);
   }
 
   return 0;
