@@ -158,7 +158,7 @@ int main(int argc, char *argv[])
 
     // We have reached a step, we compute the NF
     if(line % nb_kmers_per_step == 0) {
-      fprintf(stderr, "step %zu - Compute normalization_factors\n", nb_step + 1);
+      fprintf(stderr, "compute normalization_factors\n");
       // Create a new array to store the NF
       double * new_nf = compute_nf(norm_counts, nb_samples);
       // We already have done one step, we compare the values
@@ -167,7 +167,7 @@ int main(int argc, char *argv[])
         for(j = 0; j < nb_samples; j++) {
           sum += abs(normalization_factors[j] - new_nf[j]);
         }
-        fprintf(stderr, "Error with previous step : %f\n", sum);
+        fprintf(stderr, "step %zu - error with previous step : %f\n", nb_step, sum);
         // New factors replace the old ones
         free(normalization_factors);
         normalization_factors = new_nf;
