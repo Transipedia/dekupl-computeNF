@@ -13,6 +13,7 @@ KSEQ_INIT(gzFile, gzread)
 #define VERSION "0.0.1"
 
 typedef kvec_t(double) double_array;
+typedef kvec_t(double_array) double_array_collection;
 
 double logmean(int *counts, int n) {
   double sum = 0;
@@ -34,28 +35,26 @@ int compare_double(const void *a,const void *b) {
   return 0;
 }
 
+double* compute_nf(double_array_collection norm_counts, size_t nb_samples) {
+  double * normalization_factors = (double*) malloc(sizeof(double) * nb_samples);
+  for(size_t j = 0; j < nb_samples; j++) {
+    double_array a = kv_A(norm_counts,j);
+    qsort(a.a, kv_size(a), sizeof(double), compare_double);
+    double median = kv_A(a,int(kv_size(a)/2));
+    normalization_factors[j] = exp(median);
+  }
+  return normalization_factors;
+}
+
 int main(int argc, char *argv[])
 {
   char *counts_file;
-  double sampling_rate = 1;
-
-  int c;
-  while ((c = getopt(argc, argv, "s:")) >= 0) {
-    switch (c) {
-      case 's': sampling_rate = atof(optarg); break;
-    }
-  }
-
-  if(sampling_rate <= 0 || sampling_rate > 1) {
-    fprintf(stderr, "Invalid value for sampling rate [%.2f], must be comprised between 0 and 1.\n", sampling_rate);
-    return 1;
-  }
+  int nb_kmers_per_step = 1000000;
+  double min_error_per_sample = 0.001;
 
   if ((optind) >= argc) {
 		fprintf(stderr, "\n");
 		fprintf(stderr, "Usage:   computeNF [options] <counts.tsv>\n\n");
-		fprintf(stderr, "Options: -s FLOAT  sampling rate [%.2f]\n", sampling_rate);
-		fprintf(stderr, "\n");
 		return 1;
 	}
 
@@ -65,9 +64,11 @@ int main(int argc, char *argv[])
 	kstream_t *ks;
 	kstring_t *str;
   kvec_t(char*) samples;
-  kvec_t(double_array) norm_counts;
-  int dret = 0, sampling_modulo = (int) 1 / sampling_rate;
-  size_t j, line = 0, nb_samples = 0;
+  double_array_collection norm_counts;
+  int dret = 0;
+  size_t j, line = 0, nb_samples = 0, nb_step = 0;
+  double* normalization_factors;
+  double min_error;
 
   str = (kstring_t*)calloc(1, sizeof(kstring_t));
   kv_init(samples);
@@ -92,7 +93,8 @@ int main(int argc, char *argv[])
   gzclose(fp);
 
   nb_samples = kv_size(samples);
-
+  normalization_factors = (double*) malloc(sizeof(double) * nb_samples);
+  min_error = min_error_per_sample * nb_samples;
   /* 2. For each sample store counts normalized with log row mean */
 
   // Open counts file
@@ -106,13 +108,6 @@ int main(int argc, char *argv[])
   ks_getuntil(ks, KS_SEP_LINE, str, &dret);
   while(ks_getuntil(ks, KS_SEP_SPACE, str, &dret) >= 0) {
     line++;
-
-    // Go to next line depending of the sampling rate
-    if(line % sampling_modulo != 0) {
-      // Skip the rest of the line
-      ks_getuntil(ks, KS_SEP_LINE, str, &dret);
-      continue;
-    }
 
     char *kmer = ks_release(str);
 
@@ -139,21 +134,45 @@ int main(int argc, char *argv[])
       exit(EXIT_FAILURE);
     }
 
+    // We have reached a step, we compute the NF
+    if(line % nb_kmers_per_step == 0) {
+      fprintf(stderr, "compute normalization_factors\n");
+      // Create a new array to store the NF
+      double * new_nf = compute_nf(norm_counts, nb_samples);
+      // We already have done one step, we compare the values
+      if(nb_step > 0) {
+        double sum = 0;
+        for(j = 0; j < nb_samples; j++) {
+          sum += abs(normalization_factors[j] - new_nf[j]);
+        }
+        fprintf(stderr, "step %zu - error with previous step : %f\n", nb_step, sum);
+        // New factors replace the old ones
+        free(normalization_factors);
+        normalization_factors = new_nf;
+        // We have found a good approximation we stop the computation
+        if(sum < min_error) {
+          break;
+        }
+      }
+      nb_step++;
+    }
+
     free(kmer);
   }
   ks_destroy(ks);
   gzclose(fp);
 
+  // We have never calculated the NF
+  if(nb_step == 0) {
+    normalization_factors = compute_nf(norm_counts, nb_samples);
+  }
+
   fprintf(stdout, "sample\tnormalization_factor\n");
 
   /* 3. Compute median for each sample and print normalization factor */
   for(j = 0; j < nb_samples; j++) {
-    double_array a = kv_A(norm_counts,j);
-    qsort(a.a, kv_size(a), sizeof(double), compare_double);
-    double median = kv_A(a,int(kv_size(a)/2));
-    double nf = exp(median);
-    fprintf(stdout, "%s\t%f\n", kv_A(samples,j), nf);
-    kv_destroy(a);
+    fprintf(stdout, "%s\t%f\n", kv_A(samples,j), normalization_factors[j]);
+    kv_destroy(kv_A(norm_counts,j));
   }
 
   return 0;
